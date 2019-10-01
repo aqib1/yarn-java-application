@@ -33,16 +33,22 @@ public class Constants {
 	public static final String CONTAINER_MEMORY_KEY_DESC = "Amount of memory for container in MB, requested using shell";
 
 	public static final String JAVA_BIN_PATH = "$JAVA_HOME/bin/java";
+	
+	public static final String SPARK_SUBMIT_COMMAND = "spark-submit --class ";
 
 	public static final String JAVA_MAX_MEMORY = " -Xmx256M";
 
 	public static final String YARN_APP_MEMORY_STATS = " com.yarn.details.YarnDetails";
+	
+	public static final String SPAKR_JOB_APP = "com.spark.read.SparkJob";
 
 	public static final String LOG_DIR_STDOUT = " 1>" + ApplicationConstants.LOG_DIR_EXPANSION_VAR + "/stdout";
 
 	public static final String LOG_DIR_STDERR = " 2>" + ApplicationConstants.LOG_DIR_EXPANSION_VAR + "/stderr";
 
 	public static final String AM_JAR_PATH = "AM_JAR_PATH";
+	
+	public static final String SPARK_JAR = "SPARK_JAR_PATH";
 
 	/**
 	 * Environment key name denoting the file timestamp for the shell script. Used
@@ -57,4 +63,6 @@ public class Constants {
 	public static final String AM_JAR_LENGTH = "AM_JAR_LENGTH";
 
 	public static final String AM_JAR_NAME = "AppMaster.jar";
+	
+	public static final String SPARK_JAR_NAME = "SparkJob.jar";
 }

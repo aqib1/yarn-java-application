@@ -1,10 +1,14 @@
 package com.yarn.application;
 
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
+import org.apache.commons.beanutils.ConvertUtils;
 import org.apache.commons.cli.CommandLine;
 import org.apache.commons.cli.GnuParser;
 import org.apache.commons.cli.Options;
@@ -30,6 +34,7 @@ import org.apache.hadoop.yarn.api.records.Resource;
 import org.apache.hadoop.yarn.client.api.AMRMClient;
 import org.apache.hadoop.yarn.client.api.AMRMClient.ContainerRequest;
 import org.apache.hadoop.yarn.client.api.NMClient;
+import org.apache.hadoop.yarn.client.api.async.AMRMClientAsync;
 import org.apache.hadoop.yarn.conf.YarnConfiguration;
 import org.apache.hadoop.yarn.exceptions.YarnException;
 import org.apache.hadoop.yarn.util.ConverterUtils;
@@ -46,7 +51,9 @@ public class YarnApplicationMaster {
 	private ApplicationAttemptId appAttemptId;
 	// Yarn configurations
 	private Configuration conf;
-	
+
+	private String sparkJarPath = "";
+
 	private String appJarPath = "";
 	// TimeStamp needed for creating a local resource
 	private long appJarTimeStamp = 0;
@@ -59,6 +66,8 @@ public class YarnApplicationMaster {
 	private int containerVirtualCores = 1;
 	// No. of containers to run shell command on
 	private int numTotalContainers = 1;
+	
+	
 
 	public boolean init(String[] args) throws Exception {
 		Options options = new Options();
@@ -110,6 +119,11 @@ public class YarnApplicationMaster {
 		if (!env.containsKey(ApplicationConstants.Environment.NM_PORT.name())) {
 			throw new RuntimeException(ApplicationConstants.Environment.NM_PORT.name() + " not set in the enviroment");
 		}
+		if (env.containsKey(Constants.SPARK_JAR)) {
+			sparkJarPath = env.get(Constants.SPARK_JAR);
+		}
+		
+		
 		if (env.containsKey(Constants.AM_JAR_PATH)) {
 			appJarPath = env.get(Constants.AM_JAR_PATH);
 		}
@@ -149,25 +163,52 @@ public class YarnApplicationMaster {
 		return appMasterJar;
 	}
 
+	private LocalResource createSparkJobJar() throws IOException {
+		if (!sparkJarPath.isEmpty()) {
+			LocalResource sparkJar = Records.newRecord(LocalResource.class);
+			sparkJar.setType(LocalResourceType.FILE);
+			Path jarPath = new Path(sparkJarPath);
+			jarPath = FileSystem.get(conf).makeQualified(jarPath);
+			sparkJar.setResource(ConverterUtils.getYarnUrlFromPath(jarPath));
+			sparkJar.setVisibility(LocalResourceVisibility.PUBLIC);
+			return sparkJar;
+		}
+		return null;
+	}
+
 	private ContainerLaunchContext createContainerLaunchContext(LocalResource appMasterJar,
-			Map<String, String> containerEnv) {
+			Map<String, String> containerEnv, Map<String, LocalResource> localResources, List<String> commands) {
 		ContainerLaunchContext context = Records.newRecord(ContainerLaunchContext.class);
-		context.setLocalResources(Collections.singletonMap(Constants.AM_JAR_NAME, appMasterJar));
+		context.setLocalResources(localResources);
 		context.setEnvironment(containerEnv);
-		context.setCommands(Collections.singletonList(Constants.JAVA_BIN_PATH + Constants.YARN_APP_MEMORY_STATS
-				+ Constants.LOG_DIR_STDOUT + Constants.LOG_DIR_STDERR));
-		//spark-jar
-		
-		
+		context.setCommands(commands);
 		return context;
 	}
 
 	public void run() throws YarnException, IOException, InterruptedException {
 		AMRMClient<ContainerRequest> amrmClient = getAMRMClientForContainerRequest();
 		NMClient nmClient = getNMClient();
+
+		List<String> commands = new ArrayList<String>();
 		Map<String, String> containerEnv = getContainerEnv();
 		// Setup ApplicationMaster jar file for Container
 		LocalResource appMasterJar = createAppMasterJar();
+
+		// Setup Spark jar file for Container
+		LocalResource sparkJar = createSparkJobJar();
+
+		Map<String, LocalResource> localResources = new HashMap<>();
+		localResources.put(Constants.AM_JAR_NAME, appMasterJar);
+
+		// commands need to add in the list
+		commands.add(Constants.JAVA_BIN_PATH + Constants.YARN_APP_MEMORY_STATS + Constants.LOG_DIR_STDOUT
+				+ Constants.LOG_DIR_STDERR);
+
+		if (!Objects.isNull(sparkJar)) {
+			localResources.put(Constants.SPARK_JAR_NAME, sparkJar);
+			commands.add(Constants.SPARK_SUBMIT_COMMAND + Constants.JAVA_BIN_PATH + Constants.SPAKR_JOB_APP);
+		}
+
 		// Obtain allocated containers and launch
 		int allocatedContainers = 0;
 		// We need to start counting completed containers while still allocating
@@ -179,7 +220,8 @@ public class YarnApplicationMaster {
 			AllocateResponse response = amrmClient.allocate(0);
 			for (Container container : response.getAllocatedContainers()) {
 				allocatedContainers++;
-				ContainerLaunchContext appContainer = createContainerLaunchContext(appMasterJar, containerEnv);
+				ContainerLaunchContext appContainer = createContainerLaunchContext(appMasterJar, containerEnv,
+						localResources, commands);
 				LOG.info("Launching container " + allocatedContainers);
 				nmClient.startContainer(container, appContainer);
 			}

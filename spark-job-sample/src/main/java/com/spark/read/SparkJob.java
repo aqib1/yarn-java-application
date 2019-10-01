@@ -9,7 +9,7 @@ import org.apache.spark.sql.types.StructType;
 
 public class SparkJob {
 
-	private static final String URL_HDFS_FILE = "";
+	private static final String URL_HDFS_FILE = "/user/root/testdata";
 	private static final String MASTER_URL = "local[*]";
 
 	private SparkConf sparkConf;
@@ -27,7 +27,7 @@ public class SparkJob {
 
 	public SparkJob readCsv() {
 		Dataset<Row> df = sparkSession.read().format("csv").option("header", "true").schema(schema).load(URL_HDFS_FILE);
-		Dataset<Row> updated_df = df.select(df.col("*")) .filter("srch_adults_cnt > 0")
+		Dataset<Row> updated_df = df.select(df.col("*")) .filter("srch_adults_cnt > 1")
 	      .filter("srch_children_cnt > 0")
 	      .filter("is_booking == 0")
 	      .filter("srch_rm_cnt > 0")
@@ -40,7 +40,7 @@ public class SparkJob {
 	}
 
 	public static void main(String[] args) {
-
+		new SparkJob().readCsv();
 	}
 
 }
